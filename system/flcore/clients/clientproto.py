@@ -69,7 +69,7 @@ class clientProto(Client):
         fine_features = defaultdict(list)
         for step in range(max_local_epochs):
             for i, (x, y) in enumerate(trainloader):
-                # print("i = ",i)
+
                 if type(x) == type([]):
                     x[0] = x[0].to(self.device)
                 else:
