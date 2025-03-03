@@ -96,6 +96,14 @@ def run(args):
                 'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)', 
                 'torchvision.models.resnet152(pretrained=False, num_classes=args.num_classes)', 
             ]
+        elif args.model_family == "CNN-5":
+            args.models = [
+                "cnn1(num_classes=args.num_classes)",
+                "cnn2(num_classes=args.num_classes)",
+                "cnn3(num_classes=args.num_classes)",
+                "cnn4(num_classes=args.num_classes)",
+                "cnn5(num_classes=args.num_classes)"
+            ]
 
         elif args.model_family == "HtFE-img-8-HtC-img-4":
             args.models = [
