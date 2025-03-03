@@ -49,8 +49,8 @@ class clientTGP(Client):
                         y_c = yy.item()
                         if type(global_protos[y_c]) != type([]):
                             proto_new[i, :] = global_protos[y_c].data
-                    # we use MSE here following FedProto's official implementation, where lamda is set to 10 by default.
-                    # see https://github.com/yuetan031/FedProto/blob/main/lib/update.py#L171
+                    # we use MSE here following FedDMG's official implementation, where lamda is set to 10 by default.
+                    # see https://github.com/yuetan031/FedDMG/blob/main/lib/update.py#L171
                     loss += self.loss_mse(proto_new, rep) * self.lamda
 
                 optimizer.zero_grad()
@@ -152,7 +152,7 @@ class clientTGP(Client):
         return losses, train_num
 
 
-# https://github.com/yuetan031/fedproto/blob/main/lib/utils.py#L205
+# https://github.com/yuetan031/FedDMG/blob/main/lib/utils.py#L205
 def agg_func(protos):
     """
     Returns the average of the weights.

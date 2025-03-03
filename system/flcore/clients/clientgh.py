@@ -75,7 +75,7 @@ class clientGH(Client):
         save_item(agg_func(protos), self.role, 'protos', self.save_folder_name)
 
 
-# https://github.com/yuetan031/fedproto/blob/main/lib/utils.py#L205
+# https://github.com/yuetan031/FedDMG/blob/main/lib/utils.py#L205
 def agg_func(protos):
     """
     Returns the average of the weights.

@@ -10,12 +10,11 @@ from sklearn import metrics
 from utils.data_utils import read_client_data
 from flcore.trainmodel.models import BaseHeadSplit
 from flcore.newmodel.dynprojector import DynamicProjector
-from flcore.newmodel.cnnp import *
+from flcore.newmodel.cnn import *
 
 
 
-
-class Client(object):
+class ClientDMGBase(object):
     """
     Base class for clients in federated learning.
     """
@@ -37,8 +36,8 @@ class Client(object):
         self.local_epochs = args.local_epochs
 
         if args.save_folder_name == 'temp' or 'temp' not in args.save_folder_name:
-            model = BaseHeadSplit(args, self.id).to(self.device)
-            # model = eval(args.models[self.id % len(args.models)]).to(self.device)
+            # model = BaseHeadSplit(args, self.id).to(self.device)
+            model = eval(args.models[self.id % len(args.models)]).to(self.device)
             save_item(model, self.role, 'model', self.save_folder_name)
             projector = DynamicProjector()
             save_item(projector,self.role,'projector',self.save_folder_name)

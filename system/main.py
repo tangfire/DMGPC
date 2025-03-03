@@ -8,7 +8,7 @@ import numpy as np
 import logging
 
 from flcore.servers.serverlocal import Local
-from flcore.servers.serverproto import FedProto
+from flcore.servers.serverdmg import FedDMG
 from flcore.servers.servergen import FedGen
 from flcore.servers.serverdistill import FedDistill
 from flcore.servers.serverlg import LG_FedAvg
@@ -20,6 +20,7 @@ from flcore.servers.serverktl_stylegan_xl import FedKTL as FedKTL_stylegan_xl
 from flcore.servers.serverktl_stylegan_3 import FedKTL as FedKTL_stylegan_3
 from flcore.servers.serverktl_stable_diffusion import FedKTL as FedKTL_stable_diffusion
 from flcore.servers.servermrl import FedMRL
+from flcore.servers.serverproto import FedProto
 
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
@@ -103,6 +104,15 @@ def run(args):
                 "cnn3(num_classes=args.num_classes)",
                 "cnn4(num_classes=args.num_classes)",
                 "cnn5(num_classes=args.num_classes)"
+            ]
+
+        elif args.model_family == "CNNP-5":
+            args.models = [
+                "cnnp1(num_classes=args.num_classes)",
+                "cnnp2(num_classes=args.num_classes)",
+                "cnnp3(num_classes=args.num_classes)",
+                "cnnp4(num_classes=args.num_classes)",
+                "cnnp5(num_classes=args.num_classes)"
             ]
 
         elif args.model_family == "HtFE-img-8-HtC-img-4":
@@ -278,7 +288,12 @@ def run(args):
         if args.algorithm == "Local":
             server = Local(args, i)
 
+        elif args.algorithm == "FedDMG":
+            server = FedDMG(args, i)
+
+
         elif args.algorithm == "FedProto":
+
             server = FedProto(args, i)
 
         elif args.algorithm == "FedGen":
@@ -384,7 +399,7 @@ if __name__ == "__main__":
                         help="Whether to group and select clients at each round according to time cost")
     parser.add_argument('-tth', "--time_threthold", type=float, default=10000,
                         help="The threthold for droping slow clients")
-    # FedProto
+    # FedDMG
     parser.add_argument('-lam', "--lamda", type=float, default=1.0)
     # FedGen
     parser.add_argument('-nd', "--noise_dim", type=int, default=512)
