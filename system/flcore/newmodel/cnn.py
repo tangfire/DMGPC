@@ -60,6 +60,15 @@ class HeteroCNN(nn.Module):
         x = torch.flatten(x, 1)  # [B, C]
         return x
 
+    # 模型特征提取
+    # 检查HeteroCNN特征提取层次：
+    # def forward(self, x):
+    #     features = self.forward_features(x)  # 基础特征
+    #     fine_feat_x = torch.relu(self.fc1(features))  # 中间层 → 细粒度
+    #     fine_feat = self.fine_proj(fine_feat_x)  # 细粒度特征
+    #     coarse_feat = torch.relu(self.fc2(fine_feat_x))  # 更高层 → 粗粒度
+    #     # ? 符合"低维粗粒度，高维细粒度"的设计
+
     def forward(self, x):
         # 确保输入在正确设备
         x = x.to(self.device)

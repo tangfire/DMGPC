@@ -37,40 +37,65 @@ from flcore.newmodel.dynprojector import DynamicProjector
 #             loss += torch.relu(d_pos - d_neg_min + self.margin)
 #         return loss / features.size(0)
 
-class ContrastiveLoss(nn.Module):
-    def __init__(self, margin=1.0, temperature=0.1):
+# class ContrastiveLoss(nn.Module):
+#     def __init__(self, margin=1.0, temperature=0.1):
+#         super().__init__()
+#         self.margin = margin
+#         self.temperature = temperature
+#
+#     def forward(self, features, global_prototypes, labels):
+#         """
+#         输入:
+#             features: [B, d_fused] 本地特征
+#             global_prototypes: dict {class: [d_fused]}
+#             labels: [B] 真实类别
+#         """
+#         # 将原型字典转换为矩阵 [C, d]
+#         classes = sorted(global_prototypes.keys())
+#         proto_matrix = torch.stack([global_prototypes[c] for c in classes]).to(features.device)  # [C, d]
+#
+#         # 计算所有样本与所有原型的距离矩阵 [B, C]
+#         dist_matrix = torch.cdist(features, proto_matrix, p=2)  # 关键优化：使用cdist批量计算
+#
+#         # 生成正负样本掩码
+#         label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(features.device)
+#         pos_mask = torch.zeros_like(dist_matrix, dtype=torch.bool)
+#         pos_mask[torch.arange(features.size(0)), label_indices] = 1
+#         neg_mask = ~pos_mask
+#
+#         # 提取正负距离
+#         pos_dist = dist_matrix[pos_mask].view(-1, 1)  # [B, 1]
+#         neg_dists = dist_matrix[neg_mask].view(features.size(0), -1)  # [B, C-1]
+#         min_neg_dist, _ = neg_dists.min(dim=1)  # [B]
+#
+#         # 计算对比损失
+#         losses = torch.relu(pos_dist - min_neg_dist.unsqueeze(1) + self.margin)
+#         return losses.mean()
+
+class PrototypeContrastiveLoss(nn.Module):
+    def __init__(self, temperature=0.1):
         super().__init__()
-        self.margin = margin
         self.temperature = temperature
 
-    def forward(self, features, global_prototypes, labels):
-        """
-        输入:
-            features: [B, d_fused] 本地特征
-            global_prototypes: dict {class: [d_fused]}
-            labels: [B] 真实类别
-        """
-        # 将原型字典转换为矩阵 [C, d]
-        classes = sorted(global_prototypes.keys())
-        proto_matrix = torch.stack([global_prototypes[c] for c in classes]).to(features.device)  # [C, d]
+    def forward(self, local_protos, global_protos_dict, labels):
+        # 将全局原型字典转换为矩阵 [C, d]
+        classes = sorted(global_protos_dict.keys())
+        global_protos = torch.stack([global_protos_dict[c] for c in classes]).to(local_protos.device)
 
-        # 计算所有样本与所有原型的距离矩阵 [B, C]
-        dist_matrix = torch.cdist(features, proto_matrix, p=2)  # 关键优化：使用cdist批量计算
+        # 计算余弦相似度
+        sim_matrix = torch.cosine_similarity(
+            local_protos.unsqueeze(1),  # [B, 1, d]
+            global_protos.unsqueeze(0),  # [1, C, d]
+            dim=-1
+        ) / self.temperature  # [B, C]
 
-        # 生成正负样本掩码
-        label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(features.device)
-        pos_mask = torch.zeros_like(dist_matrix, dtype=torch.bool)
-        pos_mask[torch.arange(features.size(0)), label_indices] = 1
-        neg_mask = ~pos_mask
+        # 构建标签掩码
+        label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(local_protos.device)
+        pos_sim = sim_matrix[torch.arange(len(labels)), label_indices]
 
-        # 提取正负距离
-        pos_dist = dist_matrix[pos_mask].view(-1, 1)  # [B, 1]
-        neg_dists = dist_matrix[neg_mask].view(features.size(0), -1)  # [B, C-1]
-        min_neg_dist, _ = neg_dists.min(dim=1)  # [B]
-
-        # 计算对比损失
-        losses = torch.relu(pos_dist - min_neg_dist.unsqueeze(1) + self.margin)
-        return losses.mean()
+        # 计算InfoNCE损失
+        loss = -pos_sim + torch.log(torch.exp(sim_matrix).sum(dim=1))
+        return loss.mean()
 
 class ClientDMG(ClientDMGBase):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
@@ -79,7 +104,7 @@ class ClientDMG(ClientDMGBase):
 
         self.loss_mse = nn.MSELoss()
         self.lamda = args.lamda
-        self.loss_contrastive = ContrastiveLoss(margin=1.0)
+        self.loss_contrastive = PrototypeContrastiveLoss()
 
 
     def train(self):
@@ -120,12 +145,13 @@ class ClientDMG(ClientDMGBase):
                 if global_protos is not None:
                     # proto_new = copy.deepcopy(rep.detach())
                     output_fused = projector(outputs['coarse'],outputs['fine'])
-                    proto_new = copy.deepcopy(output_fused.detach())
+                    # proto_new = copy.deepcopy(output_fused.detach())
+                    proto_new = output_fused
                     # print("proto_new = ", proto_new.shape)
-                    for i, yy in enumerate(y):
-                        y_c = yy.item()
-                        if type(global_protos[y_c]) != type([]):
-                            proto_new[i, :] = global_protos[y_c].data
+                    # for i, yy in enumerate(y):
+                    #     y_c = yy.item()
+                    #     if type(global_protos[y_c]) != type([]):
+                    #         proto_new[i, :] = global_protos[y_c].data
                     # loss += self.loss_mse(proto_new, rep) * self.lamda
                     # print("label = ",y)
 
