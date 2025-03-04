@@ -94,8 +94,8 @@ class ClientDMG(ClientDMGBase):
                     # loss += self.loss_mse(proto_new, rep) * self.lamda
                     # print("label = ",y)
 
-                    # loss += self.loss_contrastive(proto_new,global_protos ,y)* self.lamda
-                    loss += self.loss_contrastive(proto_new,global_protos ,y)
+                    loss += self.loss_contrastive(proto_new,global_protos ,y)* self.lamda
+                    # loss += self.loss_contrastive(proto_new,global_protos ,y)
 
 
 
