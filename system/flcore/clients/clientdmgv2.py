@@ -73,30 +73,88 @@ from flcore.newmodel.dynprojector import DynamicProjector
 #         losses = torch.relu(pos_dist - min_neg_dist.unsqueeze(1) + self.margin)
 #         return losses.mean()
 
-class PrototypeContrastiveLoss(nn.Module):
-    def __init__(self, temperature=0.1):
+# class PrototypeContrastiveLoss(nn.Module):
+#     def __init__(self, temperature=0.1):
+#         super().__init__()
+#         self.temperature = temperature
+#
+#     def forward(self, local_protos, global_protos_dict, labels):
+#         # 将全局原型字典转换为矩阵 [C, d]
+#         classes = sorted(global_protos_dict.keys())
+#         global_protos = torch.stack([global_protos_dict[c] for c in classes]).to(local_protos.device)
+#
+#         # 计算余弦相似度
+#         sim_matrix = torch.cosine_similarity(
+#             local_protos.unsqueeze(1),  # [B, 1, d]
+#             global_protos.unsqueeze(0),  # [1, C, d]
+#             dim=-1
+#         ) / self.temperature  # [B, C]
+#
+#         # 构建标签掩码
+#         label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(local_protos.device)
+#         pos_sim = sim_matrix[torch.arange(len(labels)), label_indices]
+#
+#         # 计算InfoNCE损失
+#         loss = -pos_sim + torch.log(torch.exp(sim_matrix).sum(dim=1))
+#         return loss.mean()
+
+class MultiGranularContrastiveLoss(nn.Module):
+    def __init__(self, margins=(0.5, 1.0), temperature=0.5):
         super().__init__()
+        self.margin_coarse, self.margin_fine = margins
         self.temperature = temperature
 
-    def forward(self, local_protos, global_protos_dict, labels):
-        # 将全局原型字典转换为矩阵 [C, d]
-        classes = sorted(global_protos_dict.keys())
-        global_protos = torch.stack([global_protos_dict[c] for c in classes]).to(local_protos.device)
+    def forward(self, local_coarse, local_fine, global_protos_dict, labels):
+        """
+        输入:
+            local_coarse: [B, d_coarse] 客户端粗粒度特征
+            local_fine: [B, d_fine] 客户端细粒度特征
+            global_protos_dict: {class: tensor} 全局原型字典
+            labels: [B] 样本标签
+        """
+        # 粗粒度对比损失（带边缘）
+        loss_coarse = self._contrastive_loss(
+            features=local_coarse,
+            global_protos=global_protos_dict,
+            labels=labels,
+            margin=self.margin_coarse
+        )
 
-        # 计算余弦相似度
+        # 细粒度类内紧凑性损失
+        loss_fine = self._intra_class_loss(local_fine, labels)
+
+        return loss_coarse + 0.3 * loss_fine
+
+    def _contrastive_loss(self, features, global_protos, labels, margin):
+        classes = sorted(global_protos.keys())
+        global_protos = torch.stack([global_protos[c] for c in classes]).to(features.device)
+
+        # 计算相似度矩阵 [B, C]
         sim_matrix = torch.cosine_similarity(
-            local_protos.unsqueeze(1),  # [B, 1, d]
+            features.unsqueeze(1),  # [B, 1, d]
             global_protos.unsqueeze(0),  # [1, C, d]
             dim=-1
-        ) / self.temperature  # [B, C]
+        ) / self.temperature
 
-        # 构建标签掩码
-        label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(local_protos.device)
+        # 获取正样本和负样本索引
+        label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(features.device)
         pos_sim = sim_matrix[torch.arange(len(labels)), label_indices]
+        neg_sim = sim_matrix[sim_matrix != pos_sim.unsqueeze(1)].view(len(labels), -1)
 
-        # 计算InfoNCE损失
-        loss = -pos_sim + torch.log(torch.exp(sim_matrix).sum(dim=1))
-        return loss.mean()
+        # 带边缘的对比损失
+        losses = torch.relu(neg_sim - pos_sim.unsqueeze(1) + margin)
+        return losses.mean()
+
+    def _intra_class_loss(self, features, labels):
+        unique_labels = torch.unique(labels)
+        var_loss = 0
+        for l in unique_labels:
+            mask = (labels == l)
+            if mask.sum() < 2:  # 单个样本无法计算方差
+                continue
+            class_feat = features[mask]
+            var_loss += torch.var(class_feat, dim=0).mean()
+        return var_loss / len(unique_labels)
 
 
 class ClientDMGV2(ClientDMGV2Base):
@@ -106,7 +164,7 @@ class ClientDMGV2(ClientDMGV2Base):
 
         self.loss_mse = nn.MSELoss()
         self.lamda = args.lamda
-        self.loss_contrastive = PrototypeContrastiveLoss()
+        self.loss_contrastive = MultiGranularContrastiveLoss(margins=(0.5, 1.0), temperature=0.5)# 粗/细粒度边缘参数
 
     def train(self):
         trainloader = self.load_train_data()
@@ -144,11 +202,14 @@ class ClientDMGV2(ClientDMGV2Base):
 
                 loss = self.loss(outputs['output'], y)
 
+                ortho_loss = outputs['ortho_loss']
+                loss+=ortho_loss
+
                 if global_protos is not None:
                     # proto_new = copy.deepcopy(rep.detach())
-                    output_fused = projector(outputs['coarse'], outputs['fine'])
+                    # output_fused = projector(outputs['coarse'], outputs['fine'])
                     # proto_new = copy.deepcopy(output_fused.detach())
-                    proto_new = output_fused
+                    # proto_new = output_fused
                     # print("proto_new = ", proto_new.shape)
                     # for i, yy in enumerate(y):
                     #     y_c = yy.item()
@@ -157,7 +218,9 @@ class ClientDMGV2(ClientDMGV2Base):
                     # loss += self.loss_mse(proto_new, rep) * self.lamda
                     # print("label = ",y)
 
-                    loss += self.loss_contrastive(proto_new, global_protos, y) * self.lamda
+                    # loss += self.loss_contrastive(proto_new, global_protos, y) * self.lamda
+                    loss += self.loss_contrastive(outputs['coarse'],outputs['fine'], global_protos, y) * self.lamda
+
                     # loss += self.loss_contrastive(proto_new,global_protos ,y)
 
                 for i, yy in enumerate(y):

@@ -27,8 +27,10 @@ class ResidualBlock(nn.Module):
         return self.relu(x)
 
 class HeteroCNN(nn.Module):
-    def __init__(self, model_type, num_classes=10, feat_dims=(256, 512), input_size=(32, 32)):
+    def __init__(self, model_type, num_classes=10, feat_dims=(512, 512), input_size=(32, 32),ortho_weight=0.1):
         super().__init__()
+        # 新增参数
+        self.ortho_weight = ortho_weight  # 正交性损失权重
         self.model_type = model_type
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.coarse_dim, self.fine_dim = feat_dims
@@ -156,13 +158,29 @@ class HeteroCNN(nn.Module):
         fine_feat = self.fine_fc(conv_features)  # [B, fine_dim]
         coarse_feat = self.coarse_fc(conv_features)  # [B, coarse_dim]
 
+        # 新增正交性损失计算 --------------------------------------
+        ortho_loss = self._calculate_ortho_loss(coarse_feat, fine_feat)
+
         # 分类输出
         out = self.classifier(coarse_feat)
         return {
             'output': out,
             'coarse': coarse_feat,
-            'fine': fine_feat
+            'fine': fine_feat,
+            'ortho_loss': ortho_loss
         }
+
+    def _calculate_ortho_loss(self, coarse, fine):
+        """计算粗/细粒度特征正交性损失"""
+        # 方法1：余弦相似度绝对值均值
+        cos_sim = torch.cosine_similarity(coarse, fine, dim=1)
+        loss = torch.abs(cos_sim).mean()
+
+        # 方法2：矩阵正交性约束（可选）
+        # matrix = torch.mm(coarse.T, fine)  # [d_coarse, d_fine]
+        # loss = torch.norm(matrix, p='fro') / (coarse.shape[1] * fine.shape[1])
+
+        return self.ortho_weight * loss
 
 
 # 模型工厂函数（支持不同异构模型）

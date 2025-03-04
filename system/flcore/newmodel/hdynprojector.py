@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class HDynamicProjector(nn.Module):
-    def __init__(self, d_coarse=256, d_fine=512, hidden_dim=512, fused_dim=512):
+    def __init__(self, d_coarse=512, d_fine=512, hidden_dim=512, fused_dim=512):
         super().__init__()
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
