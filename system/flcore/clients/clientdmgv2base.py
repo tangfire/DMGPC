@@ -9,13 +9,12 @@ from sklearn.preprocessing import label_binarize
 from sklearn import metrics
 from utils.data_utils import read_client_data
 from flcore.trainmodel.models import BaseHeadSplit
-from flcore.newmodel.dynprojector import DynamicProjector
+from flcore.newmodel.hdynprojector import HDynamicProjector
 from flcore.newmodel.cnn import *
 from flcore.newmodel.hcnn import *
 
 
-
-class ClientDMGBase(object):
+class ClientDMGV2Base(object):
     """
     Base class for clients in federated learning.
     """
@@ -40,8 +39,8 @@ class ClientDMGBase(object):
             # model = BaseHeadSplit(args, self.id).to(self.device)
             model = eval(args.models[self.id % len(args.models)]).to(self.device)
             save_item(model, self.role, 'model', self.save_folder_name)
-            projector = DynamicProjector()
-            save_item(projector,self.role,'projector',self.save_folder_name)
+            projector = HDynamicProjector()
+            save_item(projector, self.role, 'projector', self.save_folder_name)
 
         self.train_slow = kwargs['train_slow']
         self.send_slow = kwargs['send_slow']
@@ -49,7 +48,6 @@ class ClientDMGBase(object):
         self.send_time_cost = {'num_rounds': 0, 'total_cost': 0.0}
 
         self.loss = nn.CrossEntropyLoss()
-
 
     def load_train_data(self, batch_size=None):
         if batch_size == None:
@@ -82,7 +80,7 @@ class ClientDMGBase(object):
         test_num = 0
         y_prob = []
         y_true = []
-        
+
         with torch.no_grad():
             for x, y in testloaderfull:
                 if type(x) == type([]):
@@ -108,7 +106,7 @@ class ClientDMGBase(object):
         y_true = np.concatenate(y_true, axis=0)
 
         auc = metrics.roc_auc_score(y_true, y_prob, average='micro')
-        
+
         return test_acc, test_num, auc
 
     def train_metrics(self):
@@ -154,6 +152,7 @@ def save_item(item, role, item_name, item_path=None):
     if not os.path.exists(item_path):
         os.makedirs(item_path)
     torch.save(item, os.path.join(item_path, role + "_" + item_name + ".pt"))
+
 
 def load_item(role, item_name, item_path=None):
     try:

@@ -9,6 +9,8 @@ from flcore.trainmodel.alexnet import *
 from flcore.trainmodel.mobilenet_v2 import *
 from flcore.trainmodel.transformer import *
 from flcore.newmodel.cnnp import *
+from flcore.newmodel.hcnn import *
+from flcore.newmodel.scnn import *
 
 
 # split an original model into a base and a head

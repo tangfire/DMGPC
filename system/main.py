@@ -9,6 +9,7 @@ import logging
 
 from flcore.servers.serverlocal import Local
 from flcore.servers.serverdmg import FedDMG
+from flcore.servers.serverdmgv2 import FedDMGV2
 from flcore.servers.servergen import FedGen
 from flcore.servers.serverdistill import FedDistill
 from flcore.servers.serverlg import LG_FedAvg
@@ -21,6 +22,7 @@ from flcore.servers.serverktl_stylegan_3 import FedKTL as FedKTL_stylegan_3
 from flcore.servers.serverktl_stable_diffusion import FedKTL as FedKTL_stable_diffusion
 from flcore.servers.servermrl import FedMRL
 from flcore.servers.serverproto import FedProto
+
 
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
@@ -104,6 +106,20 @@ def run(args):
                 "cnn3(num_classes=args.num_classes)",
                 "cnn4(num_classes=args.num_classes)",
                 "cnn5(num_classes=args.num_classes)"
+            ]
+        elif args.model_family == "HCNN-4":
+            args.models = [
+                "hcnn1(num_classes=args.num_classes)",
+                "hcnn2(num_classes=args.num_classes)",
+                "hcnn3(num_classes=args.num_classes)",
+                "hcnn4(num_classes=args.num_classes)"
+            ]
+        elif args.model_family == "SCNN-4":
+            args.models = [
+                "scnn1(num_classes=args.num_classes)",
+                "scnn2(num_classes=args.num_classes)",
+                "scnn3(num_classes=args.num_classes)",
+                "scnn4(num_classes=args.num_classes)"
             ]
 
         elif args.model_family == "CNNP-5":
@@ -290,6 +306,9 @@ def run(args):
 
         elif args.algorithm == "FedDMG":
             server = FedDMG(args, i)
+
+        elif args.algorithm == "FedDMGV2":
+            server = FedDMGV2(args, i)
 
 
         elif args.algorithm == "FedProto":
