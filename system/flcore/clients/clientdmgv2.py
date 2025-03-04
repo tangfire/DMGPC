@@ -2,6 +2,7 @@ import copy
 import torch
 import torch.nn as nn
 import numpy as np
+import torch.nn.functional as F
 import time
 from flcore.clients.clientdmgv2base import ClientDMGV2Base, load_item, save_item
 from collections import defaultdict
@@ -140,6 +141,7 @@ class ClientDMGV2(ClientDMGV2Base):
                 # rep = model.base(x)
                 # output = model.head(rep)
                 outputs = model(x)
+
                 loss = self.loss(outputs['output'], y)
 
                 if global_protos is not None:
@@ -170,6 +172,8 @@ class ClientDMGV2(ClientDMGV2Base):
 
         coarse_protos = agg_func(coarse_features)
         fine_protos = agg_func(fine_features)
+
+
 
         coarse_classes = list(coarse_protos.keys())
         fine_classes = list(fine_protos.keys())
