@@ -50,8 +50,9 @@ class MultiGranularContrastiveLoss(nn.Module):
 
         # 生成负样本掩码（排除正样本）
         label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(features.device)
-        neg_mask = torch.ones_like(sim_matrix, dtype=torch.bool)
-        neg_mask[torch.arange(len(labels)), label_indices] = False  # 将正样本位置设为False
+        pos_mask = torch.zeros_like(sim_matrix, dtype=torch.bool)
+        pos_mask[torch.arange(len(labels)), label_indices] = True
+        neg_mask = ~pos_mask  # 确保所有非正样本均为负样本
 
         # 提取负样本相似度 [B, C-1]
         neg_sim = sim_matrix[neg_mask].view(len(labels), -1)  # 确保每行有C-1个负样本
@@ -77,7 +78,7 @@ class ClientDMGV2(ClientDMGV2Base):
 
         self.loss_mse = nn.MSELoss()
         self.lamda = args.lamda
-        self.loss_contrastive = MultiGranularContrastiveLoss()# 粗/细粒度边缘参数
+        self.loss_contrastive = MultiGranularContrastiveLoss(margins=(0.8,0.3))# 粗/细粒度边缘参数
 
     def train(self):
         trainloader = self.load_train_data()

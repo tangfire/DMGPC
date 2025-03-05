@@ -62,3 +62,4 @@ class HDynamicProjector(nn.Module):
         # 动态融合本地多粒度原型
         fused = self.adapter(torch.cat([P_coarse, P_fine], dim=1)).to(self.device)
         return fused
+

@@ -27,7 +27,7 @@ class ResidualBlock(nn.Module):
         return self.relu(x)
 
 class HeteroCNN(nn.Module):
-    def __init__(self, model_type, num_classes=10, feat_dims=(512, 512), input_size=(32, 32),ortho_weight=0.1):
+    def __init__(self, model_type, num_classes=10, feat_dims=(512, 512), input_size=(32, 32),ortho_weight=0.01):
         super().__init__()
         # 新增参数
         self.ortho_weight = ortho_weight  # 正交性损失权重

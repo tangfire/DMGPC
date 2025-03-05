@@ -1,4 +1,6 @@
 import time
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -103,19 +105,30 @@ class FedDMGTGP(Server):
         self._compute_class_gap(self.uploaded_fine_protos, proto_type='fine')
 
     def _compute_class_gap(self, protos_list, proto_type):
-        # 聚合同类原型
+        # 聚合同类原型（确保返回张量在GPU）
         avg_protos = proto_cluster(protos_list)
 
-        # 计算最小类间距
-        self.gap = torch.ones(self.num_classes, device=self.device) * 1e9
-        for k1 in avg_protos.keys():
-            for k2 in avg_protos.keys():
-                if k1 > k2:
-                    dis = torch.norm(avg_protos[k1] - avg_protos[k2], p=2)
-                    self.gap[k1] = torch.min(self.gap[k1], dis)
-                    self.gap[k2] = torch.min(self.gap[k2], dis)
+        # 转换为排序后的张量矩阵 [C, D]
+        classes = sorted(avg_protos.keys())
+        protos = torch.stack([avg_protos[c].to(self.device) for c in classes])
 
-        print(f'[{proto_type}] Class-wise minimum distance:', self.gap)
+        # 计算全对全距离矩阵 [C, C]
+        dist_matrix = torch.cdist(protos, protos, p=2)
+
+        # 屏蔽对角线（自身距离）
+        mask = torch.eye(len(classes), dtype=torch.bool, device=self.device)
+        dist_matrix.masked_fill_(mask, float('inf'))
+
+        # 获取每个类到最近类的距离 [C]
+        min_distances, _ = torch.min(dist_matrix, dim=1)
+
+        # 更新全局间距记录
+        self.gap = torch.zeros(self.num_classes, device=self.device)
+        for idx, c in enumerate(classes):
+            self.gap[c] = min_distances[idx]
+
+        # 打印时转换到CPU
+        print(f'[{proto_type}] Class-wise minimum distance:', self.gap.cpu().numpy())
 
     def update_TGP(self):
         TGP = load_item(self.role, 'TGP', self.save_folder_name)
@@ -143,6 +156,12 @@ class FedDMGTGP(Server):
                 for class_id, proto in client_protos.items():
                     proto_label_pairs.append((proto, class_id))
 
+            # 在构建proto_label_pairs后添加负样本
+            neg_protos = []
+            for proto, label in proto_label_pairs:
+                neg_label = (label + 1) % self.num_classes
+                neg_protos.append((proto, neg_label))
+            proto_label_pairs.extend(neg_protos)
             # 计算动态边缘
             avg_protos = proto_cluster(protos_list)
             margin = compute_margin(avg_protos) * (0.7 if proto_type == 'coarse' else 0.3)
