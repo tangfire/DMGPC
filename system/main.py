@@ -22,7 +22,7 @@ from flcore.servers.serverktl_stylegan_3 import FedKTL as FedKTL_stylegan_3
 from flcore.servers.serverktl_stable_diffusion import FedKTL as FedKTL_stable_diffusion
 from flcore.servers.servermrl import FedMRL
 from flcore.servers.serverproto import FedProto
-
+from flcore.servers.serverdmgtgp import FedDMGTGP
 
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
@@ -46,58 +46,58 @@ def run(args):
         # Generate args.models
         if args.model_family == "HtFE-img-2":
             args.models = [
-                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)', 
-                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)', 
+                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)',
+                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)',
             ]
 
         elif args.model_family == "HtFE-img-3":
             args.models = [
-                'resnet10(num_classes=args.num_classes)', 
-                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)', 
+                'resnet10(num_classes=args.num_classes)',
+                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)',
             ]
 
         elif args.model_family == "HtFE-img-4":
             args.models = [
-                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)', 
-                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)', 
-                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)', 
+                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)',
+                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)',
+                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)',
                 'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)'
             ]
 
         elif args.model_family == "HtFE-img-5":
             args.models = [
-                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)', 
-                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)', 
+                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)',
+                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)',
                 'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)',
-                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)', 
+                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)',
             ]
 
         elif args.model_family == "HtFE-img-8":
             args.models = [
-                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)', 
-                # 'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=10816)', 
-                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)', 
-                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)', 
+                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)',
+                # 'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=10816)',
+                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)',
+                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)',
                 'torchvision.models.resnet152(pretrained=False, num_classes=args.num_classes)'
             ]
 
         elif args.model_family == "HtFE-img-9":
             args.models = [
-                'resnet4(num_classes=args.num_classes)', 
-                'resnet6(num_classes=args.num_classes)', 
-                'resnet8(num_classes=args.num_classes)', 
-                'resnet10(num_classes=args.num_classes)', 
-                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet152(pretrained=False, num_classes=args.num_classes)', 
+                'resnet4(num_classes=args.num_classes)',
+                'resnet6(num_classes=args.num_classes)',
+                'resnet8(num_classes=args.num_classes)',
+                'resnet10(num_classes=args.num_classes)',
+                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet152(pretrained=False, num_classes=args.num_classes)',
             ]
         elif args.model_family == "CNN-5":
             args.models = [
@@ -133,65 +133,65 @@ def run(args):
 
         elif args.model_family == "HtFE-img-8-HtC-img-4":
             args.models = [
-                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)', 
-                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)', 
-                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)', 
+                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)',
+                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)',
+                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)',
                 'torchvision.models.resnet152(pretrained=False, num_classes=args.num_classes)'
             ]
             args.global_model = 'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)'
             args.heads = [
-                'Head(hidden_dims=[512], num_classes=args.num_classes)', 
-                'Head(hidden_dims=[512, 512], num_classes=args.num_classes)', 
-                'Head(hidden_dims=[512, 256], num_classes=args.num_classes)', 
-                'Head(hidden_dims=[512, 128], num_classes=args.num_classes)', 
+                'Head(hidden_dims=[512], num_classes=args.num_classes)',
+                'Head(hidden_dims=[512, 512], num_classes=args.num_classes)',
+                'Head(hidden_dims=[512, 256], num_classes=args.num_classes)',
+                'Head(hidden_dims=[512, 128], num_classes=args.num_classes)',
             ]
 
         elif args.model_family == "Res34-HtC-img-4":
             args.models = [
-                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)', 
+                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)',
             ]
             args.global_model = 'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)'
             args.heads = [
-                'Head(hidden_dims=[512], num_classes=args.num_classes)', 
-                'Head(hidden_dims=[512, 512], num_classes=args.num_classes)', 
-                'Head(hidden_dims=[512, 256], num_classes=args.num_classes)', 
-                'Head(hidden_dims=[512, 128], num_classes=args.num_classes)', 
+                'Head(hidden_dims=[512], num_classes=args.num_classes)',
+                'Head(hidden_dims=[512, 512], num_classes=args.num_classes)',
+                'Head(hidden_dims=[512, 256], num_classes=args.num_classes)',
+                'Head(hidden_dims=[512, 128], num_classes=args.num_classes)',
             ]
 
         elif args.model_family == "HtM-img-10":
             args.models = [
-                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)', 
-                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)', 
-                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.resnet152(pretrained=False, num_classes=args.num_classes)', 
-                'torchvision.models.vit_b_16(image_size=32, num_classes=args.num_classes)', 
+                'FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)',
+                'torchvision.models.googlenet(pretrained=False, aux_logits=False, num_classes=args.num_classes)',
+                'mobilenet_v2(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet34(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet50(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet101(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.resnet152(pretrained=False, num_classes=args.num_classes)',
+                'torchvision.models.vit_b_16(image_size=32, num_classes=args.num_classes)',
                 'torchvision.models.vit_b_32(image_size=32, num_classes=args.num_classes)'
             ]
 
         elif args.model_family == "HtFE-txt-all":
             args.models = [
-                'fastText(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)', 
-                'LSTMNet(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)', 
-                'BiLSTM_TextClassification(input_size=args.vocab_size, hidden_size=args.feature_dim, output_size=args.num_classes, num_layers=1, embedding_dropout=0, lstm_dropout=0, attention_dropout=0, embedding_length=args.feature_dim)', 
+                'fastText(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)',
+                'LSTMNet(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)',
+                'BiLSTM_TextClassification(input_size=args.vocab_size, hidden_size=args.feature_dim, output_size=args.num_classes, num_layers=1, embedding_dropout=0, lstm_dropout=0, attention_dropout=0, embedding_length=args.feature_dim)',
                 'TextCNN(hidden_dim=args.feature_dim, max_len=args.max_len, vocab_size=args.vocab_size, num_classes=args.num_classes)',
                 'TransformerModel(ntoken=args.vocab_size, d_model=args.feature_dim, nhead=8, nlayers=2, num_classes=args.num_classes, max_len=args.max_len)',
                 'TextLogisticRegression(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)',
                 'GRUNet(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)'
             ]
-        
+
         elif args.model_family == "HtFE-txt-6":
             args.models = [
-                'fastText(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)', 
-                'LSTMNet(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)', 
-                'BiLSTM_TextClassification(input_size=args.vocab_size, hidden_size=args.feature_dim, output_size=args.num_classes, num_layers=1, embedding_dropout=0, lstm_dropout=0, attention_dropout=0, embedding_length=args.feature_dim)', 
+                'fastText(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)',
+                'LSTMNet(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)',
+                'BiLSTM_TextClassification(input_size=args.vocab_size, hidden_size=args.feature_dim, output_size=args.num_classes, num_layers=1, embedding_dropout=0, lstm_dropout=0, attention_dropout=0, embedding_length=args.feature_dim)',
                 'TransformerModel(ntoken=args.vocab_size, d_model=args.feature_dim, nhead=8, nlayers=2, num_classes=args.num_classes, max_len=args.max_len)',
                 'TextLogisticRegression(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)',
                 'GRUNet(hidden_dim=args.feature_dim, vocab_size=args.vocab_size, num_classes=args.num_classes)'
@@ -240,24 +240,24 @@ def run(args):
 
         elif args.model_family == "MLPs":
             args.models = [
-                'AmazonMLP(feature_dim=[])', 
-                'AmazonMLP(feature_dim=[200])', 
-                'AmazonMLP(feature_dim=[500])', 
-                'AmazonMLP(feature_dim=[1000, 500])', 
-                'AmazonMLP(feature_dim=[1000, 500, 200])', 
+                'AmazonMLP(feature_dim=[])',
+                'AmazonMLP(feature_dim=[200])',
+                'AmazonMLP(feature_dim=[500])',
+                'AmazonMLP(feature_dim=[1000, 500])',
+                'AmazonMLP(feature_dim=[1000, 500, 200])',
             ]
 
         elif args.model_family == "MLP_1layer":
             args.models = [
-                'AmazonMLP(feature_dim=[200])', 
-                'AmazonMLP(feature_dim=[500])', 
+                'AmazonMLP(feature_dim=[200])',
+                'AmazonMLP(feature_dim=[500])',
             ]
 
         elif args.model_family == "MLP_layers":
             args.models = [
-                'AmazonMLP(feature_dim=[500])', 
-                'AmazonMLP(feature_dim=[1000, 500])', 
-                'AmazonMLP(feature_dim=[1000, 500, 200])', 
+                'AmazonMLP(feature_dim=[500])',
+                'AmazonMLP(feature_dim=[1000, 500])',
+                'AmazonMLP(feature_dim=[1000, 500, 200])',
             ]
 
         elif args.model_family == "HtFE-sen-2":
@@ -296,7 +296,7 @@ def run(args):
 
         else:
             raise NotImplementedError
-            
+
         for model in args.models:
             print(model)
 
@@ -307,8 +307,13 @@ def run(args):
         elif args.algorithm == "FedDMG":
             server = FedDMG(args, i)
 
+
+
         elif args.algorithm == "FedDMGV2":
             server = FedDMGV2(args, i)
+
+        elif args.algorithm == "FedDMGTGP":
+            server = FedDMGTGP(args, i)
 
 
         elif args.algorithm == "FedProto":
