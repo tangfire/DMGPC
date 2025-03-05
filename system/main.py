@@ -22,7 +22,7 @@ from flcore.servers.serverktl_stylegan_3 import FedKTL as FedKTL_stylegan_3
 from flcore.servers.serverktl_stable_diffusion import FedKTL as FedKTL_stable_diffusion
 from flcore.servers.servermrl import FedMRL
 from flcore.servers.serverproto import FedProto
-
+from flcore.servers.serverdmgtgp import FedDMGTGP
 
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
@@ -307,8 +307,13 @@ def run(args):
         elif args.algorithm == "FedDMG":
             server = FedDMG(args, i)
 
+
+
         elif args.algorithm == "FedDMGV2":
             server = FedDMGV2(args, i)
+
+        elif args.algorithm == "FedDMGTGP":
+            server = FedDMGTGP(args, i)
 
 
         elif args.algorithm == "FedProto":
