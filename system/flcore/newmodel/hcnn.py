@@ -170,17 +170,21 @@ class HeteroCNN(nn.Module):
             'ortho_loss': ortho_loss
         }
 
+    # def _calculate_ortho_loss(self, coarse, fine):
+    #     """计算粗/细粒度特征正交性损失"""
+    #     # 方法1：余弦相似度绝对值均值
+    #     cos_sim = torch.cosine_similarity(coarse, fine, dim=1)
+    #     loss = torch.abs(cos_sim).mean()
+    #
+    #     # 方法2：矩阵正交性约束（可选）
+    #     # matrix = torch.mm(coarse.T, fine)  # [d_coarse, d_fine]
+    #     # loss = torch.norm(matrix, p='fro') / (coarse.shape[1] * fine.shape[1])
+    #
+    #     return self.ortho_weight * loss
     def _calculate_ortho_loss(self, coarse, fine):
-        """计算粗/细粒度特征正交性损失"""
-        # 方法1：余弦相似度绝对值均值
+        # 改为温和的正交约束
         cos_sim = torch.cosine_similarity(coarse, fine, dim=1)
-        loss = torch.abs(cos_sim).mean()
-
-        # 方法2：矩阵正交性约束（可选）
-        # matrix = torch.mm(coarse.T, fine)  # [d_coarse, d_fine]
-        # loss = torch.norm(matrix, p='fro') / (coarse.shape[1] * fine.shape[1])
-
-        return self.ortho_weight * loss
+        return torch.clamp(cos_sim.abs() - 0.5, min=0).mean()  # 允许适度相关
 
 
 # 模型工厂函数（支持不同异构模型）

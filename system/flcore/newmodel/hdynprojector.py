@@ -63,3 +63,21 @@ class HDynamicProjector(nn.Module):
         fused = self.adapter(torch.cat([P_coarse, P_fine], dim=1)).to(self.device)
         return fused
 
+
+class HDynamicProjector(nn.Module):
+    def __init__(self, d_coarse=512, d_fine=512):
+        super().__init__()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.attention = nn.Sequential(
+            nn.Linear(d_coarse + d_fine, 128),
+            nn.ReLU(),
+            nn.Linear(128, 2),
+            nn.Softmax(dim=1)
+        ).to(self.device)
+
+    def forward(self, P_coarse, P_fine):
+        # P_coarse: [B, D1], P_fine: [B, D2]
+        feat = torch.cat([P_coarse, P_fine], dim=1)
+        alpha = self.attention(feat)  # [B, 2]
+        fused = alpha[:, 0].unsqueeze(1) * P_coarse + alpha[:, 1].unsqueeze(1) * P_fine
+        return fused
