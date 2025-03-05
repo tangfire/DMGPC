@@ -65,9 +65,25 @@ class MultiGranularContrastiveLoss(nn.Module):
         return losses.mean()
 
     def _orthogonality_loss(self, feat1, feat2):
-        # 确保粗/细粒度特征空间正交
+        """
+        计算两个特征集的正交损失
+
+        Args:
+            feat1 (torch.Tensor): 第一组特征
+            feat2 (torch.Tensor): 第二组特征
+
+        Returns:
+            torch.Tensor: 正交损失
+        """
+        # 确保输入是张量
+        if not isinstance(feat1, torch.Tensor) or not isinstance(feat2, torch.Tensor):
+            raise TypeError("Input features must be torch.Tensor")
+
+        # 标准化特征
         feat1 = F.normalize(feat1, dim=1)
         feat2 = F.normalize(feat2, dim=1)
+
+        # 计算特征间的内积矩阵，并计算Frobenius范数
         return torch.norm(torch.mm(feat1.T, feat2), p='fro')
 
 
