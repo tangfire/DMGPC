@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from flcore.clients.clientdmgv2 import ClientDMGV2
 from flcore.servers.serverbase import Server
 from flcore.clients.clientbase import load_item, save_item
-from threading import Thread
 from collections import defaultdict
 from torch.utils.data import DataLoader
 
