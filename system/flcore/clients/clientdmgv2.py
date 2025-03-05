@@ -136,14 +136,21 @@ class MultiGranularContrastiveLoss(nn.Module):
             dim=-1
         ) / self.temperature
 
-        # 获取正样本和负样本索引
+        # 生成负样本掩码（排除正样本）
         label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(features.device)
-        pos_sim = sim_matrix[torch.arange(len(labels)), label_indices]
-        neg_sim = sim_matrix[sim_matrix != pos_sim.unsqueeze(1)].view(len(labels), -1)
+        neg_mask = torch.ones_like(sim_matrix, dtype=torch.bool)
+        neg_mask[torch.arange(len(labels)), label_indices] = False  # 将正样本位置设为False
 
-        # 带边缘的对比损失
+        # 提取负样本相似度 [B, C-1]
+        neg_sim = sim_matrix[neg_mask].view(len(labels), -1)  # 确保每行有C-1个负样本
+
+        # 获取正样本相似度 [B]
+        pos_sim = sim_matrix[torch.arange(len(labels)), label_indices]
+
+        # 计算带边缘的对比损失
         losses = torch.relu(neg_sim - pos_sim.unsqueeze(1) + margin)
         return losses.mean()
+
 
     def _intra_class_loss(self, features, labels):
         unique_labels = torch.unique(labels)
