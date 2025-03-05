@@ -9,121 +9,33 @@ from collections import defaultdict
 from flcore.newmodel.dynprojector import DynamicProjector
 
 
-# class ContrastiveLoss(nn.Module):
-#     def __init__(self, margin=1.0):
-#         super().__init__()
-#         self.margin = margin
-#
-#     def forward(self, features, global_prototypes, labels):
-#         """
-#         输入:
-#             features: [B, d_fused] 本地特征
-#             global_prototypes: dict {class: [d_fused]}
-#             labels: [B] 真实类别
-#         """
-#         loss = 0.0
-#         for i in range(features.size(0)):
-#             c = labels[i].item()
-#             pos_proto = global_prototypes[c]  # 正样本原型
-#             neg_protos = [p for k, p in global_prototypes.items() if k != c]
-#
-#             # 正样本距离
-#             d_pos = torch.norm(features[i] - pos_proto, p=2)
-#
-#             # 负样本距离
-#             d_negs = [torch.norm(features[i] - p, p=2) for p in neg_protos]
-#             d_neg_min = torch.min(torch.stack(d_negs))
-#
-#             # 对比损失
-#             loss += torch.relu(d_pos - d_neg_min + self.margin)
-#         return loss / features.size(0)
-
-# class ContrastiveLoss(nn.Module):
-#     def __init__(self, margin=1.0, temperature=0.1):
-#         super().__init__()
-#         self.margin = margin
-#         self.temperature = temperature
-#
-#     def forward(self, features, global_prototypes, labels):
-#         """
-#         输入:
-#             features: [B, d_fused] 本地特征
-#             global_prototypes: dict {class: [d_fused]}
-#             labels: [B] 真实类别
-#         """
-#         # 将原型字典转换为矩阵 [C, d]
-#         classes = sorted(global_prototypes.keys())
-#         proto_matrix = torch.stack([global_prototypes[c] for c in classes]).to(features.device)  # [C, d]
-#
-#         # 计算所有样本与所有原型的距离矩阵 [B, C]
-#         dist_matrix = torch.cdist(features, proto_matrix, p=2)  # 关键优化：使用cdist批量计算
-#
-#         # 生成正负样本掩码
-#         label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(features.device)
-#         pos_mask = torch.zeros_like(dist_matrix, dtype=torch.bool)
-#         pos_mask[torch.arange(features.size(0)), label_indices] = 1
-#         neg_mask = ~pos_mask
-#
-#         # 提取正负距离
-#         pos_dist = dist_matrix[pos_mask].view(-1, 1)  # [B, 1]
-#         neg_dists = dist_matrix[neg_mask].view(features.size(0), -1)  # [B, C-1]
-#         min_neg_dist, _ = neg_dists.min(dim=1)  # [B]
-#
-#         # 计算对比损失
-#         losses = torch.relu(pos_dist - min_neg_dist.unsqueeze(1) + self.margin)
-#         return losses.mean()
-
-# class PrototypeContrastiveLoss(nn.Module):
-#     def __init__(self, temperature=0.1):
-#         super().__init__()
-#         self.temperature = temperature
-#
-#     def forward(self, local_protos, global_protos_dict, labels):
-#         # 将全局原型字典转换为矩阵 [C, d]
-#         classes = sorted(global_protos_dict.keys())
-#         global_protos = torch.stack([global_protos_dict[c] for c in classes]).to(local_protos.device)
-#
-#         # 计算余弦相似度
-#         sim_matrix = torch.cosine_similarity(
-#             local_protos.unsqueeze(1),  # [B, 1, d]
-#             global_protos.unsqueeze(0),  # [1, C, d]
-#             dim=-1
-#         ) / self.temperature  # [B, C]
-#
-#         # 构建标签掩码
-#         label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(local_protos.device)
-#         pos_sim = sim_matrix[torch.arange(len(labels)), label_indices]
-#
-#         # 计算InfoNCE损失
-#         loss = -pos_sim + torch.log(torch.exp(sim_matrix).sum(dim=1))
-#         return loss.mean()
-
 class MultiGranularContrastiveLoss(nn.Module):
     def __init__(self, margins=(0.5, 1.0), temperature=0.5):
         super().__init__()
         self.margin_coarse, self.margin_fine = margins
         self.temperature = temperature
 
-    def forward(self, local_coarse, local_fine, global_protos_dict, labels):
-        """
-        输入:
-            local_coarse: [B, d_coarse] 客户端粗粒度特征
-            local_fine: [B, d_fine] 客户端细粒度特征
-            global_protos_dict: {class: tensor} 全局原型字典
-            labels: [B] 样本标签
-        """
-        # 粗粒度对比损失（带边缘）
+    def forward(self, local_coarse, local_fine, global_protos, labels):
+        # 粗粒度对比损失
         loss_coarse = self._contrastive_loss(
-            features=local_coarse,
-            global_protos=global_protos_dict,
-            labels=labels,
+            local_coarse,
+            global_protos['coarse'],
+            labels,
             margin=self.margin_coarse
         )
 
-        # 细粒度类内紧凑性损失
-        loss_fine = self._intra_class_loss(local_fine, labels)
+        # 细粒度对比损失（新增）
+        loss_fine = self._contrastive_loss(
+            local_fine,
+            global_protos['fine'],
+            labels,
+            margin=self.margin_fine
+        )
 
-        return loss_coarse + 0.3 * loss_fine
+        # 特征正交约束
+        ortho_loss = self._orthogonality_loss(local_coarse, local_fine)
+
+        return loss_coarse + 0.5 * loss_fine + 0.1 * ortho_loss
 
     def _contrastive_loss(self, features, global_protos, labels, margin):
         classes = sorted(global_protos.keys())
@@ -151,17 +63,11 @@ class MultiGranularContrastiveLoss(nn.Module):
         losses = torch.relu(neg_sim - pos_sim.unsqueeze(1) + margin)
         return losses.mean()
 
-
-    def _intra_class_loss(self, features, labels):
-        unique_labels = torch.unique(labels)
-        var_loss = 0
-        for l in unique_labels:
-            mask = (labels == l)
-            if mask.sum() < 2:  # 单个样本无法计算方差
-                continue
-            class_feat = features[mask]
-            var_loss += torch.var(class_feat, dim=0).mean()
-        return var_loss / len(unique_labels)
+    def _orthogonality_loss(self, feat1, feat2):
+        # 确保粗/细粒度特征空间正交
+        feat1 = F.normalize(feat1, dim=1)
+        feat2 = F.normalize(feat2, dim=1)
+        return torch.norm(torch.mm(feat1.T, feat2), p='fro')
 
 
 class ClientDMGV2(ClientDMGV2Base):
@@ -171,7 +77,7 @@ class ClientDMGV2(ClientDMGV2Base):
 
         self.loss_mse = nn.MSELoss()
         self.lamda = args.lamda
-        self.loss_contrastive = MultiGranularContrastiveLoss(margins=(0.5, 1.0), temperature=0.5)# 粗/细粒度边缘参数
+        self.loss_contrastive = MultiGranularContrastiveLoss()# 粗/细粒度边缘参数
 
     def train(self):
         trainloader = self.load_train_data()
@@ -245,21 +151,28 @@ class ClientDMGV2(ClientDMGV2Base):
 
 
 
-        coarse_classes = list(coarse_protos.keys())
-        fine_classes = list(fine_protos.keys())
+        # coarse_classes = list(coarse_protos.keys())
+        # fine_classes = list(fine_protos.keys())
 
-        P_coarse = torch.stack([coarse_protos[c] for c in coarse_classes])
-        P_fine = torch.stack([fine_protos[c] for c in fine_classes])
-
-        P_fused = projector(P_coarse, P_fine)
-
-        # 将P_fused转换为字典结构
-        fused_protos = {
-            c: P_fused[i] for i, c in enumerate(coarse_classes)
-        }
+        # P_coarse = torch.stack([coarse_protos[c] for c in coarse_classes])
+        # P_fine = torch.stack([fine_protos[c] for c in fine_classes])
+        #
+        # P_fused = projector(P_coarse, P_fine)
+        #
+        # # 将P_fused转换为字典结构
+        # fused_protos = {
+        #     c: P_fused[i] for i, c in enumerate(coarse_classes)
+        # }
 
         # save_item(agg_func(protos), self.role, 'protos', self.save_folder_name)
-        save_item(fused_protos, self.role, 'protos', self.save_folder_name)
+        # save_item(fused_protos, self.role, 'protos', self.save_folder_name)
+        # 保存原始粗/细粒度原型（取消投影融合）
+        save_item(
+            {'coarse': coarse_protos, 'fine': fine_protos},
+            self.role,
+            'protos',
+            self.save_folder_name
+        )
         save_item(model, self.role, 'model', self.save_folder_name)
 
         self.train_time_cost['num_rounds'] += 1
@@ -277,30 +190,40 @@ class ClientDMGV2(ClientDMGV2Base):
 
         if global_protos is not None:
             with torch.no_grad():
+                # 获取服务器下发的全局融合原型
+                fused_global_protos = {}
+
+                for class_id in range(self.num_classes):
+                    # 确保原型为 [1, 512]
+                    coarse_proto = global_protos['coarse'][class_id].unsqueeze(0)  # 从 [512] -> [1, 512]
+                    fine_proto = global_protos['fine'][class_id].unsqueeze(0)
+
+                    # 投影融合
+                    fused_proto = projector(coarse_proto, fine_proto)  # [1, 512]
+                    fused_global_protos[class_id] = fused_proto.squeeze(0)
+
+                # 计算测试精度
                 for x, y in testloader:
-                    if type(x) == type([]):
-                        x[0] = x[0].to(self.device)
-                    else:
-                        x = x.to(self.device)
+                    x = x.to(self.device)
                     y = y.to(self.device)
-                    # rep = model.base(x)
                     outputs = model(x)
-                    coarse_rep = outputs['coarse']
-                    fine_rep = outputs['fine']
-                    rep = projector(coarse_rep, fine_rep)
 
-                    output = float('inf') * torch.ones(y.shape[0], self.num_classes).to(self.device)
-                    for i, r in enumerate(rep):
-                        for j, pro in global_protos.items():
-                            if type(pro) != type([]):
-                                output[i, j] = self.loss_mse(r, pro)
+                    # 本地特征融合
+                    fused_local = projector(outputs['coarse'], outputs['fine'])  # [B, 512]
 
-                    test_acc += (torch.sum(torch.argmin(output, dim=1) == y)).item()
+                    # 计算距离矩阵
+                    output = torch.zeros(y.shape[0], self.num_classes).to(self.device)
+                    for class_id, global_proto in fused_global_protos.items():
+                        dist = torch.norm(fused_local - global_proto, dim=1, p=2)
+                        output[:, class_id] = dist
+
+                    test_acc += (torch.argmin(output, dim=1) == y).sum().item()
                     test_num += y.shape[0]
 
             return test_acc, test_num, 0
         else:
             return 0, 1e-5, 0
+
 
     def train_metrics(self):
         trainloader = self.load_train_data()
