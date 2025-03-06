@@ -5,7 +5,7 @@ import torch.nn as nn
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
-
+        # 与HeteroCNN中的残差块完全一致
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride)
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
@@ -32,9 +32,11 @@ class StandardCNN(nn.Module):
         self.model_type = model_type
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+        # 关键修改：与HeteroCNN的coarse_conv保持完全相同的结构
         self.conv_layers = self._build_conv_layers(model_type)
         conv_output_dim = self._get_conv_output_dim(input_size)
 
+        # 分类器与HeteroCNN的coarse_fc保持一致
         self.classifier = nn.Sequential(
             nn.Linear(conv_output_dim, 1024),
             nn.ReLU(),
@@ -42,66 +44,62 @@ class StandardCNN(nn.Module):
         )
 
     def _build_conv_layers(self, model_type):
+        """完全对齐HeteroCNN的coarse_conv结构"""
         layers = nn.Sequential()
 
         if model_type == "cnn1":
-            layers.add_module("conv1", nn.Conv2d(3, 16, kernel_size=3, padding=1))
-            layers.add_module("bn1", nn.BatchNorm2d(16))
+            # 与HeteroCNN的coarse_conv(cnn1)完全一致
+            layers.add_module("conv1", nn.Conv2d(3, 32, 5, padding=2))
+            layers.add_module("bn1", nn.BatchNorm2d(32))
             layers.add_module("relu1", nn.ReLU())
-            layers.add_module("pool1", nn.MaxPool2d(2))
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
 
-            layers.add_module("conv2", nn.Conv2d(16, 32, kernel_size=3, padding=1))
-            layers.add_module("bn2", nn.BatchNorm2d(32))
+            layers.add_module("conv2", nn.Conv2d(32, 64, 5, padding=2))
+            layers.add_module("bn2", nn.BatchNorm2d(64))
             layers.add_module("relu2", nn.ReLU())
-            layers.add_module("pool2", nn.MaxPool2d(2))
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
 
         elif model_type == "cnn2":
-            layers.add_module("conv1", nn.Conv2d(3, 16, kernel_size=3, padding=1))
-            layers.add_module("bn1", nn.BatchNorm2d(16))
+            # 对齐HeteroCNN的coarse_conv(cnn2)
+            layers.add_module("conv1", nn.Conv2d(3, 32, 5, padding=2))
+            layers.add_module("bn1", nn.BatchNorm2d(32))
             layers.add_module("relu1", nn.ReLU())
-            layers.add_module("pool1", nn.MaxPool2d(2))
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
 
-            layers.add_module("conv2", nn.Conv2d(16, 32, kernel_size=3, padding=1))
-            layers.add_module("bn2", nn.BatchNorm2d(32))
+            layers.add_module("conv2", nn.Conv2d(32, 64, 5, padding=2))
+            layers.add_module("bn2", nn.BatchNorm2d(64))
             layers.add_module("relu2", nn.ReLU())
-
-            layers.add_module("resblock", ResidualBlock(in_channels=32, out_channels=64))
-            layers.add_module("pool2", nn.MaxPool2d(2))
+            layers.add_module("resblock", ResidualBlock(64, 128))
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
 
         elif model_type == "cnn3":
-            layers.add_module("conv1", nn.Conv2d(3, 32, kernel_size=3, padding=1))
-            layers.add_module("bn1", nn.BatchNorm2d(32))
+            # 对齐HeteroCNN的coarse_conv(cnn3)
+            layers.add_module("conv1", nn.Conv2d(3, 64, 5, padding=2))
+            layers.add_module("bn1", nn.BatchNorm2d(64))
             layers.add_module("relu1", nn.ReLU())
-            layers.add_module("pool1", nn.MaxPool2d(2))
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
 
-            layers.add_module("conv2", nn.Conv2d(32, 64, kernel_size=3, padding=1))
-            layers.add_module("bn2", nn.BatchNorm2d(64))
+            layers.add_module("conv2", nn.Conv2d(64, 128, 5, padding=2))
+            layers.add_module("bn2", nn.BatchNorm2d(128))
             layers.add_module("relu2", nn.ReLU())
-            layers.add_module("pool2", nn.MaxPool2d(2))
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
 
-            layers.add_module("conv3", nn.Conv2d(64, 128, kernel_size=3, padding=1))
-            layers.add_module("bn3", nn.BatchNorm2d(128))
+            layers.add_module("conv3", nn.Conv2d(128, 256, 5, padding=2))
+            layers.add_module("bn3", nn.BatchNorm2d(256))
             layers.add_module("relu3", nn.ReLU())
-
-            layers.add_module("conv4", nn.Conv2d(128, 256, kernel_size=3, padding=1))
-            layers.add_module("bn4", nn.BatchNorm2d(256))
-            layers.add_module("relu4", nn.ReLU())
-            layers.add_module("pool3", nn.MaxPool2d(2))
-
-            layers.add_module("conv5", nn.Conv2d(256, 512, kernel_size=3, padding=1))
-            layers.add_module("bn5", nn.BatchNorm2d(512))
-            layers.add_module("relu5", nn.ReLU())
+            layers.add_module("pool3", nn.MaxPool2d(3, stride=2))
 
         elif model_type == "cnn4":
-            layers.add_module("conv1", nn.Conv2d(3, 32, kernel_size=3, padding=1))
+            # 对齐HeteroCNN的coarse_conv(cnn4)
+            layers.add_module("conv1", nn.Conv2d(3, 32, 5, padding=2))
             layers.add_module("bn1", nn.BatchNorm2d(32))
             layers.add_module("relu1", nn.ReLU())
-            layers.add_module("pool1", nn.MaxPool2d(2))
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
 
-            layers.add_module("conv2", nn.Conv2d(32, 64, kernel_size=3, padding=1))
+            layers.add_module("conv2", nn.Conv2d(32, 64, 5, padding=2))
             layers.add_module("bn2", nn.BatchNorm2d(64))
             layers.add_module("relu2", nn.ReLU())
-            layers.add_module("pool2", nn.MaxPool2d(2))
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
 
         return layers.to(self.device)
 
@@ -119,17 +117,14 @@ class StandardCNN(nn.Module):
         return output
 
 
-def scnn1(**kwargs):
-    return StandardCNN(model_type="cnn1", **kwargs)
+# 工厂函数保持不变
+def scnn1(**kwargs): return StandardCNN(model_type="cnn1", **kwargs)
 
 
-def scnn2(**kwargs):
-    return StandardCNN(model_type="cnn2", **kwargs)
+def scnn2(**kwargs): return StandardCNN(model_type="cnn2", **kwargs)
 
 
-def scnn3(**kwargs):
-    return StandardCNN(model_type="cnn3", **kwargs)
+def scnn3(**kwargs): return StandardCNN(model_type="cnn3", **kwargs)
 
 
-def scnn4(**kwargs):
-    return StandardCNN(model_type="cnn4", **kwargs)
+def scnn4(**kwargs): return StandardCNN(model_type="cnn4", **kwargs)
