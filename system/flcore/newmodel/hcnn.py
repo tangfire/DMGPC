@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F  # 添加这一行
+
 
 
 class ResidualBlock(nn.Module):
@@ -26,47 +28,106 @@ class ResidualBlock(nn.Module):
         x += residual
         return self.relu(x)
 
+
 class HeteroCNN(nn.Module):
-    def __init__(self, model_type, num_classes=10, feat_dims=(512, 512), input_size=(32, 32),ortho_weight=0.01):
+    def __init__(self, model_type, num_classes=10, feat_dims=(512, 512), input_size=(32, 32), ortho_weight=0.01):
         super().__init__()
-        # 新增参数
-        self.ortho_weight = ortho_weight  # 正交性损失权重
-        self.model_type = model_type
+        self.ortho_weight = ortho_weight
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.coarse_dim, self.fine_dim = feat_dims
 
-        ##################################################
-        # Step 1: 根据 model_type 动态配置卷积层结构
-        ##################################################
-        # 公共卷积层配置
-        self.conv_layers = self._build_conv_layers(model_type)
+        # 独立的卷积路径
+        self.coarse_conv = self._build_coarse_conv(model_type)
+        self.fine_conv = self._build_fine_conv(model_type)
 
-        conv_output_dim = self._get_conv_output_dim(input_size)
+        # 计算独立卷积路径的输出维度
+        coarse_output_dim = self._get_conv_output_dim(self.coarse_conv, input_size)
+        fine_output_dim = self._get_conv_output_dim(self.fine_conv, input_size)
 
-        ##################################################
-        # Step 2: 独立粗/细粒度特征分支
-        ##################################################
-        # 细粒度路径
-        self.fine_fc = nn.Sequential(
-            nn.Linear(conv_output_dim, 2048),
-            nn.ReLU(),
-            nn.Linear(2048, self.fine_dim))
-
-        # 粗粒度路径
+        # 独立的全连接层
         self.coarse_fc = nn.Sequential(
-            nn.Linear(conv_output_dim, 1024),
+            nn.Linear(coarse_output_dim, 1024),
             nn.ReLU(),
-            nn.Linear(1024, self.coarse_dim))
+            nn.Linear(1024, self.coarse_dim)
+        )
 
-        # 分类头（仅用粗粒度特征）
-        self.classifier = nn.Linear(self.coarse_dim, num_classes)
+        self.fine_fc = nn.Sequential(
+            nn.Linear(fine_output_dim, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, self.fine_dim)
+        )
 
-    def _build_conv_layers(self, model_type):
-        """根据 model_type 配置不同的卷积结构"""
+        # 分类头（兼容 StandardCNN 的接口）
+        self.classifier = nn.Sequential(
+            nn.Linear(self.coarse_dim, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, num_classes)
+        )
+
+    def _build_coarse_conv(self, model_type):
+        """粗粒度路径：更大的感受野"""
         layers = nn.Sequential()
-
         if model_type == "cnn1":
-            # 简单结构：2层卷积
+            # 之前的 cnn1 配置
+            layers.add_module("conv1", nn.Conv2d(3, 32, kernel_size=5, padding=2))
+            layers.add_module("bn1", nn.BatchNorm2d(32))
+            layers.add_module("relu1", nn.ReLU())
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
+
+            layers.add_module("conv2", nn.Conv2d(32, 64, kernel_size=5, padding=2))
+            layers.add_module("bn2", nn.BatchNorm2d(64))
+            layers.add_module("relu2", nn.ReLU())
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
+
+        elif model_type == "cnn2":
+            # 之前的 cnn2 配置
+            layers.add_module("conv1", nn.Conv2d(3, 32, kernel_size=5, padding=2))
+            layers.add_module("bn1", nn.BatchNorm2d(32))
+            layers.add_module("relu1", nn.ReLU())
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
+
+            layers.add_module("conv2", nn.Conv2d(32, 64, kernel_size=5, padding=2))
+            layers.add_module("bn2", nn.BatchNorm2d(64))
+            layers.add_module("relu2", nn.ReLU())
+            layers.add_module("resblock", ResidualBlock(in_channels=64, out_channels=128))
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
+
+        elif model_type == "cnn3":
+            # 新增 cnn3 的粗粒度路径
+            layers.add_module("conv1", nn.Conv2d(3, 64, kernel_size=5, padding=2))
+            layers.add_module("bn1", nn.BatchNorm2d(64))
+            layers.add_module("relu1", nn.ReLU())
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
+
+            layers.add_module("conv2", nn.Conv2d(64, 128, kernel_size=5, padding=2))
+            layers.add_module("bn2", nn.BatchNorm2d(128))
+            layers.add_module("relu2", nn.ReLU())
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
+
+            layers.add_module("conv3", nn.Conv2d(128, 256, kernel_size=5, padding=2))
+            layers.add_module("bn3", nn.BatchNorm2d(256))
+            layers.add_module("relu3", nn.ReLU())
+            layers.add_module("pool3", nn.MaxPool2d(3, stride=2))
+
+        elif model_type == "cnn4":
+            # 新增 cnn4 的粗粒度路径（轻量级，但感受野更大）
+            layers.add_module("conv1", nn.Conv2d(3, 32, kernel_size=5, padding=2))
+            layers.add_module("bn1", nn.BatchNorm2d(32))
+            layers.add_module("relu1", nn.ReLU())
+            layers.add_module("pool1", nn.MaxPool2d(3, stride=2))
+
+            layers.add_module("conv2", nn.Conv2d(32, 64, kernel_size=5, padding=2))
+            layers.add_module("bn2", nn.BatchNorm2d(64))
+            layers.add_module("relu2", nn.ReLU())
+            layers.add_module("pool2", nn.MaxPool2d(3, stride=2))
+
+        return layers.to(self.device)
+
+    def _build_fine_conv(self, model_type):
+        """细粒度路径：保留细节"""
+        layers = nn.Sequential()
+        if model_type == "cnn1":
+            # 之前的 cnn1 配置
             layers.add_module("conv1", nn.Conv2d(3, 16, kernel_size=3, padding=1))
             layers.add_module("bn1", nn.BatchNorm2d(16))
             layers.add_module("relu1", nn.ReLU())
@@ -77,33 +138,21 @@ class HeteroCNN(nn.Module):
             layers.add_module("relu2", nn.ReLU())
             layers.add_module("pool2", nn.MaxPool2d(2))
 
-
         elif model_type == "cnn2":
-
-            # 中等结构：3层卷积 + 残差连接
-
+            # 之前的 cnn2 配置
             layers.add_module("conv1", nn.Conv2d(3, 16, kernel_size=3, padding=1))
-
             layers.add_module("bn1", nn.BatchNorm2d(16))
-
             layers.add_module("relu1", nn.ReLU())
-
             layers.add_module("pool1", nn.MaxPool2d(2))
 
             layers.add_module("conv2", nn.Conv2d(16, 32, kernel_size=3, padding=1))
-
             layers.add_module("bn2", nn.BatchNorm2d(32))
-
             layers.add_module("relu2", nn.ReLU())
-
-            # 修正残差连接
-
-            layers.add_module("resblock", ResidualBlock(in_channels=32, out_channels=64))  # 自定义残差块
-
+            layers.add_module("resblock", ResidualBlock(in_channels=32, out_channels=64))
             layers.add_module("pool2", nn.MaxPool2d(2))
 
         elif model_type == "cnn3":
-            # 深度结构：5层卷积 + SE注意力机制
+            # 新增 cnn3 的细粒度路径
             layers.add_module("conv1", nn.Conv2d(3, 32, kernel_size=3, padding=1))
             layers.add_module("bn1", nn.BatchNorm2d(32))
             layers.add_module("relu1", nn.ReLU())
@@ -117,85 +166,79 @@ class HeteroCNN(nn.Module):
             layers.add_module("conv3", nn.Conv2d(64, 128, kernel_size=3, padding=1))
             layers.add_module("bn3", nn.BatchNorm2d(128))
             layers.add_module("relu3", nn.ReLU())
-
-            layers.add_module("conv4", nn.Conv2d(128, 256, kernel_size=3, padding=1))
-            layers.add_module("bn4", nn.BatchNorm2d(256))
-            layers.add_module("relu4", nn.ReLU())
             layers.add_module("pool3", nn.MaxPool2d(2))
 
-            layers.add_module("conv5", nn.Conv2d(256, 512, kernel_size=3, padding=1))
-            layers.add_module("bn5", nn.BatchNorm2d(512))
-            layers.add_module("relu5", nn.ReLU())
-
         elif model_type == "cnn4":
-            # 轻量级结构：深度可分离卷积
-            layers.add_module("conv1", nn.Conv2d(3, 32, kernel_size=3, padding=1))
-            layers.add_module("bn1", nn.BatchNorm2d(32))
+            # 新增 cnn4 的细粒度路径（轻量级，更细致的特征提取）
+            layers.add_module("conv1", nn.Conv2d(3, 16, kernel_size=3, padding=1))
+            layers.add_module("bn1", nn.BatchNorm2d(16))
             layers.add_module("relu1", nn.ReLU())
             layers.add_module("pool1", nn.MaxPool2d(2))
 
-            layers.add_module("conv2", nn.Conv2d(32, 64, kernel_size=3, padding=1))
-            layers.add_module("bn2", nn.BatchNorm2d(64))
+            layers.add_module("conv2", nn.Conv2d(16, 32, kernel_size=3, padding=1))
+            layers.add_module("bn2", nn.BatchNorm2d(32))
             layers.add_module("relu2", nn.ReLU())
             layers.add_module("pool2", nn.MaxPool2d(2))
 
         return layers.to(self.device)
 
-    def _get_conv_output_dim(self, input_size=(32, 32)):
-        """计算卷积层输出维度"""
+    def _get_conv_output_dim(self, conv_layers, input_size=(32, 32)):
+        """计算特定卷积路径的输出维度"""
         with torch.no_grad():
             dummy_input = torch.zeros(1, 3, input_size[0], input_size[1]).to(self.device)
-            output = self.conv_layers(dummy_input)
+            output = conv_layers(dummy_input)
             return output.view(1, -1).shape[1]
 
     def forward(self, x):
-        # 公共特征提取
         x = x.to(self.device)
-        conv_features = self.conv_layers(x)
-        conv_features = torch.flatten(conv_features, 1)
 
-        # 独立分支提取多粒度特征
-        fine_feat = self.fine_fc(conv_features)  # [B, fine_dim]
-        coarse_feat = self.coarse_fc(conv_features)  # [B, coarse_dim]
+        # 独立路径特征提取
+        coarse_conv = torch.flatten(self.coarse_conv(x), 1)
+        fine_conv = torch.flatten(self.fine_conv(x), 1)
 
-        # 新增正交性损失计算 --------------------------------------
+        # 特征变换
+        fine_feat = self.fine_fc(fine_conv)
+        coarse_feat = self.coarse_fc(coarse_conv)
+
+        # 正交性损失计算
         ortho_loss = self._calculate_ortho_loss(coarse_feat, fine_feat)
 
-        # 分类输出
-        out = self.classifier(coarse_feat)
+        # 分类输出（使用粗粒度特征）
+        output = self.classifier(coarse_feat)
+
         return {
-            'output': out,
+            'output': output,
             'coarse': coarse_feat,
             'fine': fine_feat,
             'ortho_loss': ortho_loss
         }
 
-    # def _calculate_ortho_loss(self, coarse, fine):
-    #     """计算粗/细粒度特征正交性损失"""
-    #     # 方法1：余弦相似度绝对值均值
-    #     cos_sim = torch.cosine_similarity(coarse, fine, dim=1)
-    #     loss = torch.abs(cos_sim).mean()
-    #
-    #     # 方法2：矩阵正交性约束（可选）
-    #     # matrix = torch.mm(coarse.T, fine)  # [d_coarse, d_fine]
-    #     # loss = torch.norm(matrix, p='fro') / (coarse.shape[1] * fine.shape[1])
-    #
-    #     return self.ortho_weight * loss
     def _calculate_ortho_loss(self, coarse, fine):
-        # 改为温和的正交约束
-        cos_sim = torch.cosine_similarity(coarse, fine, dim=1)
-        return torch.clamp(cos_sim.abs() - 0.5, min=0).mean()  # 允许适度相关
+        """改进的正交性损失计算"""
+        # 标准化特征
+        coarse_norm = F.normalize(coarse, dim=1)
+        fine_norm = F.normalize(fine, dim=1)
+
+        # 计算余弦相似度
+        cos_sim = torch.sum(coarse_norm * fine_norm, dim=1)
+
+        # 温和的正交约束
+        loss = torch.clamp(torch.abs(cos_sim), max=0.3).mean()
+
+        return self.ortho_weight * loss
 
 
-# 模型工厂函数（支持不同异构模型）
 def hcnn1(**kwargs):
     return HeteroCNN(model_type="cnn1", **kwargs)
+
 
 def hcnn2(**kwargs):
     return HeteroCNN(model_type="cnn2", **kwargs)
 
+
 def hcnn3(**kwargs):
     return HeteroCNN(model_type="cnn3", **kwargs)
+
 
 def hcnn4(**kwargs):
     return HeteroCNN(model_type="cnn4", **kwargs)

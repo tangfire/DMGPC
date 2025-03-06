@@ -1,3 +1,4 @@
+import random
 import time
 
 import numpy as np
@@ -11,6 +12,28 @@ from collections import defaultdict
 from torch.utils.data import DataLoader
 
 
+class ServerMemoryBank:
+    def __init__(self, num_classes):
+        self.num_classes = num_classes
+        self.class_buffers = defaultdict(list)
+
+    def update(self, protos_list):
+        """更新服务器端记忆库"""
+        for client_protos in protos_list:
+            for class_id, proto in client_protos.items():
+                self.class_buffers[class_id].append(proto.detach().clone())
+
+    def sample_negative(self, exclude_label, num=1):
+        """从其他类中采样负样本"""
+        candidates = []
+        for class_id in range(self.num_classes):
+            if class_id != exclude_label and len(self.class_buffers[class_id]) > 0:
+                candidates.extend(self.class_buffers[class_id])
+        if len(candidates) >= num:
+            return random.sample(candidates, num)
+        return candidates
+
+
 class FedDMGTGP(Server):
     def __init__(self, args, times):
         super().__init__(args, times)
@@ -18,6 +41,7 @@ class FedDMGTGP(Server):
         # select slow clients
         self.set_slow_clients()
         self.set_clients(ClientDMGV2)
+        self.mem_bank = ServerMemoryBank(num_classes=self.num_classes)  # 新增记忆库
 
         print(f"\nJoin ratio / total clients: {self.join_ratio} / {self.num_clients}")
         print("Finished creating server and clients.")
@@ -135,16 +159,29 @@ class FedDMGTGP(Server):
         TGP_opt = torch.optim.SGD(TGP.parameters(), lr=self.server_learning_rate)
         TGP.train()
 
-        def compute_margin(protos_dict, scale=0.5):
+        # 新增参数配置
+        TEMPERATURE = 0.5  # 温度参数
+        REG_LAMBDA = 0.01  # 正则化强度
+        MIN_MARGIN_RATIO = 0.3  # 最小边缘比例
+
+        def compute_margin(protos_dict, proto_type):
+            """统一边缘计算函数"""
+            if len(protos_dict) == 0:
+                return torch.tensor(1.0, device=self.device)  # 默认值
+
             protos = torch.stack(list(protos_dict.values())).to(self.device)
+            n = protos.size(0)
+
+            # PyTorch方式处理对角线
+            mask = torch.eye(n, dtype=torch.bool, device=self.device)
             dist_matrix = torch.cdist(protos, protos)
+            dist_matrix.masked_fill_(mask, float('inf'))
 
-            # PyTorch对角线填充
-            mask = torch.eye(dist_matrix.size(0), dtype=torch.bool, device=dist_matrix.device)
-            dist_matrix = dist_matrix.masked_fill_(mask, float('inf'))
-
-            min_dist = dist_matrix.min(dim=1).values
-            return min_dist.median() * scale
+            min_dists = dist_matrix.min(dim=1).values
+            if proto_type == 'coarse':
+                return (min_dists.median() * 0.7).clamp(min=1.0)
+            else:
+                return (min_dists.median() * 0.3).clamp(min=0.5)
 
         # 分别处理粗/细粒度
         for proto_type in ['coarse', 'fine']:
@@ -156,19 +193,28 @@ class FedDMGTGP(Server):
                 for class_id, proto in client_protos.items():
                     proto_label_pairs.append((proto, class_id))
 
-            # 在构建proto_label_pairs后添加负样本
+            # 更新服务器记忆库
+            self.mem_bank.update(self.uploaded_coarse_protos)  # 更新coarse粒度记忆库
+            self.mem_bank.update(self.uploaded_fine_protos)  # 更新fine粒度记忆库
+
+            # 替换原有负样本生成逻辑
             neg_protos = []
             for proto, label in proto_label_pairs:
-                neg_label = (label + 1) % self.num_classes
-                neg_protos.append((proto, neg_label))
+                # 从记忆库采样真实负样本
+                neg_samples = self.mem_bank.sample_negative(
+                    exclude_label=label,
+                    num=1  # 每个正样本配1个负样本
+                )
+                if neg_samples:
+                    neg_protos.extend([(s, label) for s in neg_samples])  # 保持相同标签用于对比学习
+
             proto_label_pairs.extend(neg_protos)
+
             # 计算动态边缘
             avg_protos = proto_cluster(protos_list)
-            margin = compute_margin(avg_protos) * (0.7 if proto_type == 'coarse' else 0.3)
-            margin = margin.to(self.device)
+            margin = compute_margin(avg_protos, proto_type)
 
-
-            # 训练全局原型
+            # 训练过程
             proto_loader = DataLoader(proto_label_pairs, self.batch_size, shuffle=True)
             for batch_protos, batch_labels in proto_loader:
                 batch_protos = batch_protos.to(self.device)
@@ -177,16 +223,22 @@ class FedDMGTGP(Server):
 
                 global_protos = TGP(list(range(self.num_classes)), proto_type)
 
+                # 相似度计算
                 sim_matrix = F.cosine_similarity(
                     batch_protos.unsqueeze(1),
                     global_protos.unsqueeze(0),
                     dim=-1
-                ).to(self.device)
+                ) / TEMPERATURE
 
-                # 应用动态边缘
-                sim_matrix = sim_matrix - F.one_hot(batch_labels, self.num_classes).to(self.device) * margin
+                # 边缘调整（统一到设备）
+                margin_mask = F.one_hot(batch_labels, self.num_classes).to(self.device) * margin
+                sim_matrix = sim_matrix - margin_mask
 
-                loss = F.cross_entropy(sim_matrix, batch_labels)
+                # 正则化项
+                proto_norms = torch.norm(global_protos, p=2, dim=1).mean()
+
+                # 损失计算
+                loss = F.cross_entropy(sim_matrix, batch_labels) + REG_LAMBDA * proto_norms
                 loss.backward()
                 TGP_opt.step()
 

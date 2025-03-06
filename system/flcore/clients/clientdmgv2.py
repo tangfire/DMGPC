@@ -8,6 +8,29 @@ from flcore.clients.clientdmgv2base import ClientDMGV2Base, load_item, save_item
 from collections import defaultdict
 from flcore.newmodel.dynprojector import DynamicProjector
 
+import random
+
+
+class MemoryBank:
+    def __init__(self, capacity=2048):
+        self.buffer = []
+        self.capacity = capacity
+        self.current_ptr = 0
+
+    def update(self, features, labels):
+        # 批量更新特征和标签
+        for f, l in zip(features, labels):
+            if len(self.buffer) < self.capacity:
+                self.buffer.append((f.detach().clone(), l.item()))
+            else:
+                self.buffer[self.current_ptr] = (f.detach().clone(), l.item())
+                self.current_ptr = (self.current_ptr + 1) % self.capacity
+
+    def sample(self, exclude_label, num=32):
+        # 排除指定标签并采样
+        candidates = [x for x in self.buffer if x[1] != exclude_label]
+        return random.sample(candidates, min(num, len(candidates)))
+
 
 class MultiGranularContrastiveLoss(nn.Module):
     def __init__(self, margins=(0.5, 1.0), temperature=0.5):
@@ -15,53 +38,70 @@ class MultiGranularContrastiveLoss(nn.Module):
         self.margin_coarse, self.margin_fine = margins
         self.temperature = temperature
 
-    def forward(self, local_coarse, local_fine, global_protos, labels):
-        # 粗粒度对比损失
+        # 为coarse和fine粒度分别创建记忆库
+        self.mem_bank_coarse = MemoryBank(capacity=2048)
+        self.mem_bank_fine = MemoryBank(capacity=2048)
+
+    def forward(self, coarse_feat, fine_feat, global_protos, labels):
+        # 更新记忆库
+        self.mem_bank_coarse.update(coarse_feat, labels)
+        self.mem_bank_fine.update(fine_feat, labels)
+
+        # 计算coarse粒度对比损失
         loss_coarse = self._contrastive_loss(
-            local_coarse,
-            global_protos['coarse'],
-            labels,
-            margin=self.margin_coarse
+            features=coarse_feat,
+            global_protos=global_protos['coarse'],
+            labels=labels,
+            margin=self.margin_coarse,
+            mem_bank=self.mem_bank_coarse,
+            temp=self.temperature
         )
 
-        # 细粒度对比损失（新增）
+        # 计算fine粒度对比损失
         loss_fine = self._contrastive_loss(
-            local_fine,
-            global_protos['fine'],
-            labels,
-            margin=self.margin_fine
+            features=fine_feat,
+            global_protos=global_protos['fine'],
+            labels=labels,
+            margin=self.margin_fine,
+            mem_bank=self.mem_bank_fine,
+            temp=self.temperature
         )
 
-        # 特征正交约束
-        ortho_loss = self._orthogonality_loss(local_coarse, local_fine)
-
+        # 正交损失保持不变
+        ortho_loss = self._orthogonality_loss(coarse_feat, fine_feat)
         return loss_coarse + 0.5 * loss_fine + 0.1 * ortho_loss
 
-    def _contrastive_loss(self, features, global_protos, labels, margin):
+    def _contrastive_loss(self, features, global_protos, labels, margin, mem_bank, temp):
+        # 获取所有类别原型
         classes = sorted(global_protos.keys())
-        global_protos = torch.stack([global_protos[c] for c in classes]).to(features.device)
+        global_protos_tensor = torch.stack([global_protos[c] for c in classes]).to(features.device)
 
-        # 计算相似度矩阵 [B, C]
-        sim_matrix = torch.cosine_similarity(
-            features.unsqueeze(1),  # [B, 1, d]
-            global_protos.unsqueeze(0),  # [1, C, d]
+        # 获取每个样本对应的正原型
+        label_indices = torch.tensor([classes.index(l.item()) for l in labels]).to(features.device)
+        pos_protos = global_protos_tensor[label_indices]
+
+        # 计算正样本相似度
+        sim_pos = torch.cosine_similarity(features, pos_protos, dim=-1) / temp
+
+        # 采样负样本
+        neg_samples = []
+        for l in labels.unique():
+            negs = mem_bank.sample(exclude_label=l.item(), num=32)
+            if negs:
+                neg_samples.extend([x[0] for x in negs])
+        if not neg_samples:
+            return torch.tensor(0.0, device=features.device)
+        neg_samples = torch.stack(neg_samples).to(features.device)
+
+        # 计算负样本相似度
+        sim_neg = torch.cosine_similarity(
+            features.unsqueeze(1),
+            neg_samples.unsqueeze(0),
             dim=-1
-        ) / self.temperature
+        ) / temp
 
-        # 生成负样本掩码（排除正样本）
-        label_indices = torch.tensor([classes.index(c.item()) for c in labels]).to(features.device)
-        pos_mask = torch.zeros_like(sim_matrix, dtype=torch.bool)
-        pos_mask[torch.arange(len(labels)), label_indices] = True
-        neg_mask = ~pos_mask  # 确保所有非正样本均为负样本
-
-        # 提取负样本相似度 [B, C-1]
-        neg_sim = sim_matrix[neg_mask].view(len(labels), -1)  # 确保每行有C-1个负样本
-
-        # 获取正样本相似度 [B]
-        pos_sim = sim_matrix[torch.arange(len(labels)), label_indices]
-
-        # 计算带边缘的对比损失
-        losses = torch.relu(neg_sim - pos_sim.unsqueeze(1) + margin)
+        # 计算带margin的对比损失
+        losses = torch.relu(sim_neg - sim_pos.unsqueeze(1) + margin)
         return losses.mean()
 
     def _orthogonality_loss(self, feat1, feat2):
